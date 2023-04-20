@@ -19,6 +19,7 @@ namespace TSP
     {
         private readonly Random _random;
         private readonly List<City> _cities;
+        private List<List<int>> _population;
         private readonly int _populationSize;
         private readonly double _mutationProbability;
         private readonly int _maxGenerations;
@@ -30,31 +31,47 @@ namespace TSP
             _populationSize = populationSize;
             _mutationProbability = mutationProbability;
             _maxGenerations = maxGenerations;
+            _population = CreateInitialPopulation();
+
         }
         // Metoda rozwiązująca problem.
         public List<int> Solve()
         {
             var population = CreateInitialPopulation();
+            var bestGeneration = 0;
+            var bestDistance = double.MaxValue;
             for (var i = 0; i < _maxGenerations; i++)
             {
                 var fitnessScores = CalculateFitnessScores(population);
                 var fittestIndividual = population[fitnessScores.IndexOf(fitnessScores.Max())];
                 if (i % 1 == 0)
-                    Console.WriteLine($"Generation {i}, best distance: {CalculateDistance(fittestIndividual)}");
+                {
+                    var distance = CalculateDistance(fittestIndividual);
+                    if (distance < bestDistance)
+                    {
+                        bestGeneration = i + 1;
+                        bestDistance = distance;
+                    }
+                }
                 if (fitnessScores.Max() == 0) return fittestIndividual;
-                population = CreateNewPopulation(population, fitnessScores);
+                population = CreateNewPopulation(fitnessScores);
+                
             }
-
-            return population[CalculateFitnessScores(population).IndexOf(CalculateFitnessScores(population).Max())];
+            // zrobic ilosc generowanych dzieci rowna ilosci osobnikow w populacji i zwracac najlepszego osobnika. 90% dzieci przechodzi i pozostale 10% zastapic rodzicami
+            var bestRoute = population[CalculateFitnessScores(population).IndexOf(CalculateFitnessScores(population).Max())];
+    Console.WriteLine($"Best generation: {bestGeneration},\nBest distance: {bestDistance}, \nBest route: {string.Join("-", bestRoute)} | Indeksy miast w pliku ");
+    return bestRoute;
         }
+// zrobic ilosc generowanych dzieci rowna ilosci osobnikow w populacji i zwracac najlepszego osobnika. 90% dzieci przechodzi i pozostale 10% zastapic rodzicami
         // Tworzy początkową populację.
         private List<List<int>> CreateInitialPopulation()
         {
             var population = new List<List<int>>();
             for (var i = 0; i < _populationSize; i++)
             {
-                var individual = Enumerable.Range(0, _cities.Count).ToList();
+                var individual = Enumerable.Range(1, _cities.Count - 1).ToList();
                 Shuffle(individual);
+                individual.Insert(0, 0); // add the first city as the starting point
                 population.Add(individual);
             }
 
@@ -64,28 +81,49 @@ namespace TSP
         private List<double> CalculateFitnessScores(List<List<int>> population)
         {
             var fitnessScores = new List<double>();
+            var optimalOrder = Enumerable.Range(0, _cities.Count).ToList();
             foreach (var individual in population)
             {
                 var distance = CalculateDistance(individual);
-                fitnessScores.Add(1 / distance);
+                var orderDeviation = individual.Zip(optimalOrder, (a, b) => a == b ? 0 : 1).Sum();
+                var fitness = 1 / (distance + orderDeviation);
+                fitnessScores.Add(fitness);
             }
 
             return fitnessScores;
         }
         // Tworzy nową populację wybierajac dwojga rodziców i tworząc z nich dziecko ktore mutuje.
-        private List<List<int>> CreateNewPopulation(List<List<int>> oldPopulation, List<double> fitnessScores)
+        private List<List<int>> CreateNewPopulation(List<double> fitnessScores)
         {
             var newPopulation = new List<List<int>>();
-            for (var i = 0; i < _populationSize; i++)
+            var bestIndividual = _population[fitnessScores.IndexOf(fitnessScores.Max())];
+            newPopulation.Add(bestIndividual);
+            for (var i = 1; i < _populationSize; i++)
             {
-                var parent1 = SelectIndividual(oldPopulation, fitnessScores);
-                var parent2 = SelectIndividual(oldPopulation, fitnessScores);
-                var child = Crossover(parent1, parent2);
+                List<int> parent1 = SelectParent(fitnessScores);
+                List<int> parent2 = SelectParent(fitnessScores);
+                List<int> child = Crossover(parent1, parent2);
                 Mutate(child);
                 newPopulation.Add(child);
             }
+            _population = newPopulation;
+            return _population;
+        }
 
-            return newPopulation;
+        private List<int> SelectParent(List<double> fitnessScores)
+        {
+            var totalFitness = fitnessScores.Sum();
+            var randomValue = _random.NextDouble() * totalFitness;
+            var fitnessSum = 0.1;
+            for (var i = 0; i < _populationSize; i++)
+            {
+                fitnessSum += fitnessScores[i];
+                if (fitnessSum >= randomValue)
+                {
+                    return _population[i];
+                }
+            }
+            return _population[_populationSize - 1];
         }
         // Metoda ta wybiera losowo pojedynczego osobnika z populacji im większa wartość funkcji fitness tym większe prawdopodobieństwo wylosowania tego osobnika
         private List<int> SelectIndividual(List<List<int>> population, List<double> fitnessScores)
@@ -176,7 +214,7 @@ namespace TSP
                 cities.Add(new City(cityName, distances));
             }
             // stworzenie obiektu klasy GeneticAlgorithm i wywołanie metody Solve.
-            var geneticAlgorithm = new GeneticAlgorithm(cities, 100, 0.01,  200 + 1);
+            var geneticAlgorithm = new GeneticAlgorithm(cities, 100, 0.1,  200);
             var solution = geneticAlgorithm.Solve();
 
             Console.Write("Optimal route: ");
@@ -184,8 +222,9 @@ namespace TSP
             {
                 Console.Write(cities[index].Name + " -> ");
             }
-
+            // Jakub Jurzak
             Console.Write(cities[solution.First()].Name);
+            
             }
         }
     }
